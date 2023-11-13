@@ -59,23 +59,28 @@ public class Timeout {
   };
 
   /**
-   * True if {@code deadlineNanoTime} is defined. There is no equivalent to null
-   * or 0 for {@link System#nanoTime}.
+   * 是否设置了截止时间
    */
   private boolean hasDeadline;
+
+  /**
+   * 截止时间(具体时间)
+   */
   private long deadlineNanoTime;
+
+  /**
+   * 超时时间(时间间隔),如果设置为0则无限期运行
+   */
   private long timeoutNanos;
 
+  /**
+   * 初始化
+   */
   public Timeout() {
   }
 
   /**
-   * Wait at most {@code timeout} time before aborting an operation. Using a
-   * per-operation timeout means that as long as forward progress is being made,
-   * no sequence of operations will fail.
-   *
-   * <p>If {@code timeout == 0}, operations will run indefinitely. (Operating
-   * system timeouts may still apply.)
+   * 设置超时时间
    */
   public Timeout timeout(long timeout, TimeUnit unit) {
     if (timeout < 0) throw new IllegalArgumentException("timeout < 0: " + timeout);
@@ -84,31 +89,8 @@ public class Timeout {
     return this;
   }
 
-  /** Returns the timeout in nanoseconds, or {@code 0} for no timeout. */
-  public long timeoutNanos() {
-    return timeoutNanos;
-  }
-
-  /** Returns true if a deadline is enabled. */
-  public boolean hasDeadline() {
-    return hasDeadline;
-  }
-
   /**
-   * Returns the {@linkplain System#nanoTime() nano time} when the deadline will
-   * be reached.
-   *
-   * @throws IllegalStateException if no deadline is set.
-   */
-  public long deadlineNanoTime() {
-    if (!hasDeadline) throw new IllegalStateException("No deadline");
-    return deadlineNanoTime;
-  }
-
-  /**
-   * Sets the {@linkplain System#nanoTime() nano time} when the deadline will be
-   * reached. All operations must complete before this time. Use a deadline to
-   * set a maximum bound on the time spent on a sequence of operations.
+   * 设置截止时间(具体时间(参数))
    */
   public Timeout deadlineNanoTime(long deadlineNanoTime) {
     this.hasDeadline = true;
@@ -116,29 +98,55 @@ public class Timeout {
     return this;
   }
 
-  /** Set a deadline of now plus {@code duration} time. */
+  /**
+   * 设置截止时间(当前时间+时间间隔(参数))
+   */
   public final Timeout deadline(long duration, TimeUnit unit) {
     if (duration <= 0) throw new IllegalArgumentException("duration <= 0: " + duration);
     if (unit == null) throw new IllegalArgumentException("unit == null");
     return deadlineNanoTime(System.nanoTime() + unit.toNanos(duration));
   }
 
-  /** Clears the timeout. Operating system timeouts may still apply. */
+  /**
+   * 清理超时时间
+   */
   public Timeout clearTimeout() {
     this.timeoutNanos = 0;
     return this;
   }
 
-  /** Clears the deadline. */
+  /**
+   * 清理截止时间
+   */
   public Timeout clearDeadline() {
     this.hasDeadline = false;
     return this;
   }
 
   /**
-   * Throws an {@link InterruptedIOException} if the deadline has been reached or if the current
-   * thread has been interrupted. This method doesn't detect timeouts; that should be implemented to
-   * asynchronously abort an in-progress operation.
+   * 返回超时时间
+   */
+  public long timeoutNanos() {
+    return timeoutNanos;
+  }
+
+  /**
+   * 返回是否设置了截止时间
+   */
+  public boolean hasDeadline() {
+    return hasDeadline;
+  }
+
+  /**
+   * 返回截止时间
+   */
+  public long deadlineNanoTime() {
+    if (!hasDeadline) throw new IllegalStateException("No deadline");
+    return deadlineNanoTime;
+  }
+
+  /**
+   * 如果截止日期已到或当前线程已中断，则抛出InterruptedIOException
    */
   public void throwIfReached() throws IOException {
     if (Thread.interrupted()) {
@@ -192,12 +200,13 @@ public class Timeout {
       boolean hasDeadline = hasDeadline();
       long timeoutNanos = timeoutNanos();
 
+      // 当没有设置超时时间，当前线程进入无线期等待
       if (!hasDeadline && timeoutNanos == 0L) {
         monitor.wait(); // There is no timeout: wait forever.
         return;
       }
 
-      // Compute how long we'll wait.
+      // 计算等待时间
       long waitNanos;
       long start = System.nanoTime();
       if (hasDeadline && timeoutNanos != 0) {
@@ -209,7 +218,7 @@ public class Timeout {
         waitNanos = timeoutNanos;
       }
 
-      // Attempt to wait that long. This will break out early if the monitor is notified.
+      // 当前线程根据等待时间进入有限期等待
       long elapsedNanos = 0L;
       if (waitNanos > 0L) {
         long waitMillis = waitNanos / 1000000L;
@@ -217,7 +226,7 @@ public class Timeout {
         elapsedNanos = System.nanoTime() - start;
       }
 
-      // Throw if the timeout elapsed before the monitor was notified.
+      //实际等待时间大于等于设置等待时间，抛出超时异常
       if (elapsedNanos >= waitNanos) {
         throw new InterruptedIOException("timeout");
       }
